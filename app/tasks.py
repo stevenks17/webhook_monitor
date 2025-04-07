@@ -25,15 +25,13 @@ def process_webhook(self, message):
 
     try:
         event_id = message.get("event_id")
+        customer_id = message.get("customer_id")
         payload = message.get("payload")
-        event = db.query(WebhookEvent).filter(WebhookEvent.id == event_id).first()
+        event = db.query(WebhookEvent).filter(WebhookEvent.id == event_id, WebhookEvent.customer_id == customer_id).first()
         if not event:
             logger.info(f"Event {event_id} not found in database!")
             return
-        logger.info(f"Processing webhook:{json.dumps(payload)}")
-
-
-
+        logger.info(f"Processing webhook for customer {customer_id}:{json.dumps(payload)}")
         event.status = "processed"
         event.processed_at = datetime.datetime.utcnow()
         db.commit()

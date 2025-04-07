@@ -17,6 +17,7 @@ class WebhookEvent(Base):
     __tablename__ = "webhook_events"
 
     id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(String, nullable=False, default="default") 
     payload = Column(JSON, nullable=False)
     status = Column(String, default="pending")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
