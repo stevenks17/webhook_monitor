@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+celery
+rabbitmq
+pika
+psycopg2-binary
+SQLAlchemy
+python-dotenv
+aiohttp
