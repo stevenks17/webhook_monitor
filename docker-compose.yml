@@ -1,20 +1,9 @@
-version: "3.8"
-
 services:
   rabbitmq:
     image: rabbitmq:3-management
     ports:
       - "5672:5672"
       - "15672:15672"
-
-  postgres:
-    image: postgres:13
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: webhookdb
-    ports:
-      - "5432:5432"
 
   backend:
     build: .
@@ -25,7 +14,8 @@ services:
       - "8000:8000"
     depends_on:
       - rabbitmq
-      - postgres
+    env_file:
+      - .env
 
   worker:
     build: .
@@ -35,3 +25,6 @@ services:
     depends_on:
       - rabbitmq
       - backend
+    env_file:
+      - .env
+    restart: always

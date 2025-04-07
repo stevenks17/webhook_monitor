@@ -32,8 +32,7 @@ def process_webhook(self, message):
             return
         logger.info(f"Processing webhook:{json.dumps(payload)}")
 
-        if random.random() < 0.5:
-            raise Exception('Simulated random processing failure')
+
 
         event.status = "processed"
         event.processed_at = datetime.datetime.utcnow()
