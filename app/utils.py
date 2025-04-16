@@ -2,15 +2,16 @@ from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Literal
 from dotenv import load_dotenv
+import hmac, hashlib
 import datetime
 import os
 
+load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
-load_dotenv()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
@@ -26,7 +27,15 @@ class WebhookEvent(Base):
     processed_at = Column(DateTime, nullable=True)
 
 class WebHookPayload(BaseModel):
-    order_id: int = Field(..., description="The ID of the order")
-    status: str = Field(..., description="The status of the order")
-    customer_name: Optional[str] = Field(None, description="The name of the customer")
+    order_id: int = Field(..., gt=0, description="The ID of the order")
+    status: Literal['created', 'pending', 'failed'] = Field(..., description="Allowed: created, pending, failed")
+    customer_name: Optional[str] = Field(None, min_length=3, max_length=15, description="The name of the customer")
     amount: Optional[float] = Field(None, description="The amount of the order")
+
+def verify_hmac_signature(secret: str, body:bytes, signature: str) -> bool:
+    computed = hmac.new(
+        key = secret.encode('utf-8'),
+        msg = body,
+        digestmod = hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(computed, signature)
