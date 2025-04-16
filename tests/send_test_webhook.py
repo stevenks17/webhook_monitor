@@ -7,7 +7,7 @@ import uuid
 
 url = "http://localhost:8000/webhook"
 customer_id = "acme" 
-webhook_secret = "supersecret"  #replace with actual secret
+webhook_secret = "326487fb39a7bdfa85836046c9df5c42b8eafb192af16621df080f1b6f940b20"  #replace with actual secret
 
 payload = {
     "order_id": 123,
@@ -37,4 +37,8 @@ params = {"customer_id": customer_id}
 response = requests.post(url, headers=headers, params=params, data=raw_body)
 
 print("Status:", response.status_code)
-print("Response:", response.json())
+try:
+    print("Response:", response.json())
+except Exception as e:
+    print("Raw Response Text:", response.text)
+

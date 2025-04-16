@@ -21,8 +21,10 @@ services:
     ports:
       - "9092:9092"
     environment:
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
@@ -51,3 +53,12 @@ services:
     env_file:
       - .env
     restart: always
+
+  test:
+    build: .
+    command: ["python", "tests/kafka_consumer_test.py"]
+    depends_on:
+      - kafka
+      - backend
+    env_file:
+      - .env

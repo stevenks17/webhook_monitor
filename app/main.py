@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, Depends, Query, Header, HTTPException
 from app.producer import publish_message
 from app.utils import SessionLocal, WebhookEvent, WebHookPayload, verify_hmac_signature
 from sqlalchemy import text
+from app.kafka.producer import publish_to_kafka
 import os
 
 ENV = os.getenv("ENV", "development")
@@ -101,6 +102,12 @@ async def webhook_listener(
   db.add(event)
   db.commit()
   db.refresh(event)
+
+  publish_to_kafka("webhook_events", {
+    "event_id": event.id,
+    "customer_id": customer_id,
+    "payload": payload.model_dump()
+  })
 
   publish_message({"event_id":event.id, "customer_id": customer_id, 'payload': payload.model_dump()})
   return {"status": "received", "event_id": event.id}
