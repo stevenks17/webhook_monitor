@@ -1,14 +1,16 @@
-from fastapi import FastAPI, Request, Depends, Query, Header, HTTPException
-from app.producer import publish_message
 from app.utils import SessionLocal, WebhookEvent, WebHookPayload, verify_hmac_signature
-from sqlalchemy import text
+from fastapi import FastAPI, Request, Depends, Query, Header, HTTPException
+from prometheus_fastapi_instrumentator import Instrumentator
 from app.kafka.producer import publish_to_kafka
+from app.producer import publish_message
+from sqlalchemy import text
 import secrets
 import os
 
 ENV = os.getenv("ENV", "development")
 
 app = FastAPI()
+Instrumentator().instrument(app).expose(app)
 
 def get_db():
     db = SessionLocal()

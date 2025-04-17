@@ -5,6 +5,11 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.0.1
@@ -32,6 +37,36 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+  
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - celery_exporter
+
+  celery_exporter:
+    image: danihodovic/celery-exporter
+    command: >
+      --broker-url=${CELERY_BROKER_URL} --retry-interval=5
+    env_file: .env
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+    ports:
+      - "9808:9808"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+
 
   backend:
     build: .
@@ -76,3 +111,6 @@ services:
       - rabbitmq
     env_file:
       - .env
+volumes:
+  grafana-storage:
+
