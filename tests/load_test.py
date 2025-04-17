@@ -1,33 +1,45 @@
 import asyncio
 import aiohttp
-import random
-import time
+import json
+import hmac
+import hashlib
+import uuid
 
-URL = "http://localhost:8000/webhook"
-TOTAL_REQUESTS = 1000
-CONCURRENT_REQUESTS = 100
+URL = "http://backend:8000/webhook"
+SECRET = "326487fb39a7bdfa85836046c9df5c42b8eafb192af16621df080f1b6f940b20"
+CUSTOMER_ID = "acme"
+TOTAL_REQUESTS = 150
+CONCURRENT_REQUESTS = 50
 
-async def send_webhook(session, order_id):
-  payload = {"order_id": order_id, "status": random.choice(["created", "pending", "failed"])}
-  try:
-      async with session.post(URL, json=payload) as response:
-         if response.status == 200:
-            print(f"Sent: {order_id}")
-         else: 
-            print(f"Failed: {order_id} - Status: {response.status}")
-  except  Exception as e:
-      print(f"Exception sending order {order_id}: {e}")
-  
-async def run_load_test():
-   connector = aiohttp.TCPConnector(limit= CONCURRENT_REQUESTS)
-   async with aiohttp.ClientSession(connector=connector) as session:
-      tasks = []
-      for order_id in range(TOTAL_REQUESTS):
-         tasks.append(send_webhook(session, order_id))
-      await asyncio.gather(*tasks)
+def generate_headers(payload: dict):
+    raw = json.dumps(payload).encode("utf-8")
+    sig = hmac.new(SECRET.encode(), raw, hashlib.sha256).hexdigest()
+    return {
+        "Content-Type": "application/json",
+        "X-Delivery-Id": str(uuid.uuid4()),
+        "X-Signature": sig
+    }
+
+async def send_webhook(session, i):
+    payload = {
+        "order_id": i,
+        "status": "created",
+        "customer_name": f"User-{i}",
+        "amount": round(10 + i * 0.5, 2)
+    }
+    headers = generate_headers(payload)
+    params = {"customer_id": CUSTOMER_ID}
+    async with session.post(URL, json=payload, headers=headers, params=params) as resp:
+        if resp.status == 200:
+            print(f"✅ {i}")
+        else:
+            print(f"❌ {i} - {resp.status}")
+
+async def main():
+    connector = aiohttp.TCPConnector(limit=CONCURRENT_REQUESTS)
+    async with aiohttp.ClientSession(connector=connector) as session:
+        tasks = [send_webhook(session, i) for i in range(TOTAL_REQUESTS)]
+        await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
-   start = time.time()
-   asyncio.run(run_load_test())
-   end = time.time()
-   print(f"Sent {TOTAL_REQUESTS} requests in {end- start:.2f} seconds")
+    asyncio.run(main())

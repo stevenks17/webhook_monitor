@@ -3,11 +3,13 @@ import hashlib
 import json
 import requests
 import uuid
+import os 
 
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "TEST_SECRET")
 
-url = "http://localhost:8000/webhook"
+url = "http://backend:8000/webhook"
 customer_id = "acme" 
-webhook_secret = "326487fb39a7bdfa85836046c9df5c42b8eafb192af16621df080f1b6f940b20"  #replace with actual secret
+webhook_secret = WEBHOOK_SECRET
 
 payload = {
     "order_id": 123,
