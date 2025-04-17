@@ -3,7 +3,7 @@ from colorama import init, Fore, Style
 import json
 import os
 
-KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 
 
 consumer = Consumer ({
@@ -28,6 +28,6 @@ while True:
     try:
         payload = json.loads(msg.value().decode('utf-8'))
         pretty = json.dumps(payload, indent=2)
-        print(f"{Fore.GREEN}📨 Received:\n{Fore.CYAN}{pretty}\n{Style.RESET_ALL}")
+        print(f"{Fore.GREEN} Received:\n{Fore.CYAN}{pretty}\n{Style.RESET_ALL}")
     except Exception as e:
         print(f"{Fore.RED}Failed to parse message: {e}")
