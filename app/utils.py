@@ -1,6 +1,5 @@
 from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from dotenv import load_dotenv

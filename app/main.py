@@ -3,6 +3,7 @@ from app.producer import publish_message
 from app.utils import SessionLocal, WebhookEvent, WebHookPayload, verify_hmac_signature
 from sqlalchemy import text
 from app.kafka.producer import publish_to_kafka
+import secrets
 import os
 
 ENV = os.getenv("ENV", "development")
@@ -57,9 +58,10 @@ async def webhook_listener(
 
   if not result:
     if ENV != "production":
+        generated_secret = secrets.token_hex(32)
         db.execute(text("""
-            INSERT INTO customers (name) VALUES (:name)
-        """), {"name": customer_id})
+            INSERT INTO customers (name, webhook_secret) VALUES (:name, :secret)
+        """), {"name": customer_id, "secret": generated_secret})
         db.commit()
         result = db.execute(text(
             "SELECT webhook_secret FROM customers WHERE name = :name"
