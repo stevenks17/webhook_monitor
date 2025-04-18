@@ -1,4 +1,4 @@
-from app.utils import SessionLocal, WebhookEvent, WebHookPayload, verify_hmac_signature
+from app.utils import SessionLocal, WebhookEvent, WebHookPayload, verify_hmac
 from fastapi import FastAPI, Request, Depends, Query, Header, HTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.kafka.producer import publish_to_kafka
@@ -73,7 +73,7 @@ async def webhook_listener(
   
   webhook_secret = result[0]
 
-  if not verify_hmac_signature(webhook_secret, raw_body, x_signature):
+  if not verify_hmac(webhook_secret, raw_body, x_signature):
         db.execute(text("""
             UPDATE customers SET hmac_fail_count = hmac_fail_count + 1 WHERE name = :name
         """), {"name": customer_id})

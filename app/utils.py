@@ -13,7 +13,9 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(
     DATABASE_URL,
     pool_recycle=3600,
-    pool_pre_ping=True
+    pool_pre_ping=True,
+    pool_size=20,
+    max_overflow=30,
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -35,7 +37,7 @@ class WebHookPayload(BaseModel):
     customer_name: Optional[str] = Field(None, min_length=3, max_length=15, description="The name of the customer")
     amount: Optional[float] = Field(None, description="The amount of the order")
 
-def verify_hmac_signature(secret: str, body:bytes, signature: str) -> bool:
+def verify_hmac(secret: str, body:bytes, signature: str) -> bool:
     computed = hmac.new(
         key = secret.encode('utf-8'),
         msg = body,
