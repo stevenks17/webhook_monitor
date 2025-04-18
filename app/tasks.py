@@ -14,6 +14,8 @@ app = Celery(
     broker=CELERY_BROKER_URL,
     broker_connection_retry_on_startup=True
 )
+app.conf.worker_send_task_events = True
+app.conf.task_send_sent_event = True
 
 class BasicTaskWithRetry(Task):
     autoretry_for = (Exception,)
