@@ -1,4 +1,5 @@
 from celery import Celery, Task
+from kombu import Exchange, Queue
 from app.utils import SessionLocal, WebhookEvent
 from app.kafka.dlq import publish_to_dlq
 import datetime
@@ -14,8 +15,20 @@ app = Celery(
     broker=CELERY_BROKER_URL,
     broker_connection_retry_on_startup=True
 )
+
+app.conf.task_queues = [
+    Queue(f"webhook_q_{i}",
+          Exchange("webhook_exchange"),
+          routing_key=f"webhook.{i}",)
+    for i in range(4)
+]
+app.conf.task_default_queue = "webhook_q_0"
+app.conf.task_default_exchange = "webhook_exchange"
+app.conf.task_default_routing_key = "webhook.0"
+
 app.conf.worker_send_task_events = True
 app.conf.task_send_sent_event = True
+
 
 class BasicTaskWithRetry(Task):
     autoretry_for = (Exception,)
@@ -24,7 +37,7 @@ class BasicTaskWithRetry(Task):
     retry_jitter = True
 
 
-@app.task(bind=True, base=BasicTaskWithRetry, queue="webhook_queue")
+@app.task(bind=True, base=BasicTaskWithRetry)
 def process_webhook(self, message):
     event = None
     try:
@@ -64,4 +77,7 @@ def process_webhook(self, message):
 
         raise self.retry(exc=e)
 
+
+def shard_for_customer(customer_id: str, num_shards: int = 4) -> int:
+    return hash(customer_id) % num_shards
 

@@ -60,9 +60,9 @@ async def webhook_listener(
 
   if not result:
     if ENV != "production":
-        generated_secret = secrets.token_hex(32)
+        generated_secret = os.getenv("WEBHOOK_SECRET")
         db.execute(text("""
-            INSERT INTO customers (name, webhook_secret) VALUES (:name, :secret)
+            INSERT INTO customers (name, webhook_secret) VALUES (:name, :secret) ON CONFLICT (name) DO NOTHING
         """), {"name": customer_id, "secret": generated_secret})
         db.commit()
         result = db.execute(text(

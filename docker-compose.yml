@@ -50,7 +50,8 @@ services:
   celery_exporter:
     image: danihodovic/celery-exporter
     command: >
-      --broker-url=${CELERY_BROKER_URL} --retry-interval=5
+      --broker-url=${CELERY_BROKER_URL} 
+      --retry-interval=5
     env_file: .env
     environment:
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
@@ -76,8 +77,10 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - rabbitmq
-      - kafka
+      rabbitmq:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     env_file:
       - .env
     healthcheck:
@@ -88,13 +91,20 @@ services:
 
   worker:
     build: .
-    command: celery -A app.tasks worker --loglevel=info -Q webhook_queue --concurrency=4
+    command: >
+      celery -A "app.tasks:app" worker
+      --loglevel=info
+      -Q webhook_q_0,webhook_q_1,webhook_q_2,webhook_q_3
+      --concurrency=4    
     volumes:
       - .:/code
     depends_on:
-      - rabbitmq
-      - kafka
-      - backend
+      rabbitmq:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      backend:
+        condition: service_started
     env_file:
       - .env
     restart: always

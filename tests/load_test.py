@@ -6,15 +6,17 @@ import hashlib
 import uuid
 import time
 import statistics
+import random
 
 URL = "http://backend:8000/webhook"
 SECRET = "326487fb39a7bdfa85836046c9df5c42b8eafb192af16621df080f1b6f940b20"
-CUSTOMER_ID = "acme"
+CUSTOMER_IDS = [f"acme_{i}" for i in range(4)]
 TOTAL_REQUESTS = 150
 CONCURRENT_REQUESTS = 10
 
 durations = []
 status_counts = {"200": 0, "other": 0}
+failures = []
 
 def make_payload(i):
     return {
@@ -36,15 +38,20 @@ async def send_webhook(session, i):
     payload = make_payload(i)
     raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
     headers = generate_headers(raw)
-    params = {"customer_id": CUSTOMER_ID}
+    customer = random.choice(CUSTOMER_IDS)
+    params = {"customer_id": customer}
 
     start = time.monotonic()
     try:
         resp = await session.post(URL, data=raw, headers=headers, params=params)
         code = str(resp.status)
         status_counts["200" if code == "200" else "other"] += 1
-    except Exception:
+        if resp.status != 200:
+            body = await resp.text()
+            failures.append({"index": i, "status": resp.status, "body": body})
+    except Exception as e:
         status_counts["other"] += 1
+        failures.append({"index": i, "error": str(e)})
     finally:
         durations.append(time.monotonic() - start)
 
@@ -59,7 +66,13 @@ async def main():
                     break
             except:
                 await asyncio.sleep(1)
-        await asyncio.gather(*[send_webhook(session, i) for i in range(TOTAL_REQUESTS)])
+        await asyncio.gather(*[send_webhook(session, i) for i in range(1, TOTAL_REQUESTS+1)])
+
+        if failures:
+              print("\n––– FAILURE DETAILS –––")
+              for f in failures:
+                print(f)
+              print("––––––––––––––––––––––\n")
 
     durations.sort()
     print(f"\nResults: {status_counts['200']} OK, {status_counts['other']} failed")

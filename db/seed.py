@@ -33,8 +33,8 @@ with engine.connect() as conn:
     }
 
     conn.execute(text("""
-        INSERT INTO webhook_events (id, customer_id, payload, status, created_at)
-        VALUES (:id, :customer_id, :payload, :status, now())
+        INSERT INTO webhook_events (customer_id, payload, status, created_at)
+        VALUES (:customer_id, :payload, :status, now())
         ON CONFLICT DO NOTHING
     """), {
         "id": 1001,
