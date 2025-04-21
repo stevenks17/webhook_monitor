@@ -1,5 +1,6 @@
 from app.utils import SessionLocal, WebhookEvent, WebHookPayload, verify_hmac
-from fastapi import FastAPI, Request, Depends, Query, Header, HTTPException
+from fastapi import FastAPI, Request, Depends, Query, Header, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.kafka.producer import publish_to_kafka
 from app.producer import publish_message
@@ -46,6 +47,7 @@ def create_customer(name: str, db=Depends(get_db)):
 @app.post("/webhook")
 async def webhook_listener(
     request: Request,
+    background_tasks: BackgroundTasks,
     payload: WebHookPayload,
     customer_id: str = Query(...),
     x_delivery_id: str = Header(..., alias="X-Delivery-Id"),
@@ -107,14 +109,22 @@ async def webhook_listener(
   db.commit()
   db.refresh(event)
 
-  publish_to_kafka("webhook_events", {
-    "event_id": event.id,
-    "customer_id": customer_id,
-    "payload": payload.model_dump()
-  })
+  background_tasks.add_task(
+    publish_to_kafka,
+    "webhook_events",
+    {
+        "event_id": event.id,
+        "customer_id": customer_id,
+        "payload": payload.model_dump()
+    }
+)
+  background_tasks.add_task(
+    publish_message,
+    {"event_id": event.id, "customer_id": customer_id, "payload": payload.model_dump()}
+  ) 
 
-  publish_message({"event_id":event.id, "customer_id": customer_id, 'payload': payload.model_dump()})
-  return {"status": "received", "event_id": event.id}
+  return JSONResponse({"status": "queued", "event_id": event.id}, status_code=202)
+
 
 
 @app.get("/webhooks")

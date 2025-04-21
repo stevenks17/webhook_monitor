@@ -1,10 +1,10 @@
+import requests, time, sys
 import asyncio
 import aiohttp
 import json
 import hmac
 import hashlib
 import uuid
-import time
 import statistics
 import random
 
@@ -15,7 +15,7 @@ TOTAL_REQUESTS = 150
 CONCURRENT_REQUESTS = 10
 
 durations = []
-status_counts = {"200": 0, "other": 0}
+status_counts = {"success": 0, "other": 0}
 failures = []
 
 def make_payload(i):
@@ -44,11 +44,18 @@ async def send_webhook(session, i):
     start = time.monotonic()
     try:
         resp = await session.post(URL, data=raw, headers=headers, params=params)
-        code = str(resp.status)
-        status_counts["200" if code == "200" else "other"] += 1
-        if resp.status != 200:
+        if 200 <= resp.status < 300:
+            status_counts["success"] += 1
+        else:
+            status_counts["other"] += 1
             body = await resp.text()
             failures.append({"index": i, "status": resp.status, "body": body})
+    except aiohttp.ClientError as e:
+        status_counts["other"] += 1
+        failures.append({"index": i, "error": str(e)})
+    except asyncio.TimeoutError:
+        status_counts["other"] += 1
+        failures.append({"index": i, "error": "Timeout"})
     except Exception as e:
         status_counts["other"] += 1
         failures.append({"index": i, "error": str(e)})
@@ -75,7 +82,7 @@ async def main():
               print("––––––––––––––––––––––\n")
 
     durations.sort()
-    print(f"\nResults: {status_counts['200']} OK, {status_counts['other']} failed")
+    print(f"\nResults: {status_counts['success']} OK, {status_counts['other']} failed")
     print(f"Min    : {durations[0]:.3f}s")
     print(f"p50    : {statistics.median(durations):.3f}s")
     print(f"p95    : {durations[int(0.95*len(durations))]:.3f}s")
@@ -85,3 +92,38 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        total_seen = sum(len(requests.get("http://backend:8000/webhooks", params={"customer_id":c}).json()["webhooks"])
+                        for c in CUSTOMER_IDS)
+        if total_seen == TOTAL_REQUESTS:
+            break
+        time.sleep(0.5)
+    else:
+        print("❌ workers didn’t finish in time")
+        sys.exit(1)
+
+    # check each customer shard
+    total_seen = 0
+    total_processed = 0
+    for cust in CUSTOMER_IDS:
+        r = requests.get("http://backend:8000/webhooks", params={"customer_id": cust})
+        r.raise_for_status()
+        events = r.json()["webhooks"]
+        total_seen += len(events)
+        total_processed += sum(1 for e in events if e["status"] == "processed")
+
+    print(f"➡️  delivery_ids rows seen:      {total_seen}/{TOTAL_REQUESTS}")
+    print(f"➡️  processed events marked:    {total_processed}/{TOTAL_REQUESTS}")
+
+    if total_seen != TOTAL_REQUESTS or total_processed != TOTAL_REQUESTS:
+        print("❌ Some events never made it through the worker:")
+        for cust in CUSTOMER_IDS:
+            evs = requests.get("http://backend:8000/webhooks", params={"customer_id": cust}).json()["webhooks"]
+            bad = [e for e in evs if e["status"] != "processed"]
+            if bad:
+                print(f"  • {cust} failed: {bad}")
+        sys.exit(1)
+    else:
+        print("🎉 All events were queued and processed successfully!")

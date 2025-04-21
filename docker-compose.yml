@@ -95,7 +95,7 @@ services:
       celery -A "app.tasks:app" worker
       --loglevel=info
       -Q webhook_q_0,webhook_q_1,webhook_q_2,webhook_q_3
-      --concurrency=4    
+      --concurrency=8    
     volumes:
       - .:/code
     depends_on:
