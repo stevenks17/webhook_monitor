@@ -18,49 +18,64 @@ with engine.connect() as conn:
     conn.commit()
 
     # insert known customer
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         INSERT INTO customers (name, webhook_secret, created_at)
         VALUES (:name, :secret, now())
         ON CONFLICT (name) DO NOTHING
-    """), {"name": customer_name, "secret": webhook_secret})
+    """
+        ),
+        {"name": customer_name, "secret": webhook_secret},
+    )
 
     # insert good webhook for valid test
     payload_valid = {
         "order_id": 1,
         "status": "created",
         "customer_name": "Alice",
-        "amount": 99.99
+        "amount": 99.99,
     }
 
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         INSERT INTO webhook_events (customer_id, payload, status, created_at)
         VALUES (:customer_id, :payload, :status, now())
         ON CONFLICT DO NOTHING
-    """), {
-        "id": 1001,
-        "customer_id": customer_name,
-        "payload": json.dumps(payload_valid),
-        "status": "pending"
-    })
+    """
+        ),
+        {
+            "id": 1001,
+            "customer_id": customer_name,
+            "payload": json.dumps(payload_valid),
+            "status": "pending",
+        },
+    )
 
     # insert DLQ trigger webhook
     payload_dlq = {
         "order_id": 123,
         "status": "created",
         "customer_name": "TRIGGER_DLQ",
-        "amount": 49.99
+        "amount": 49.99,
     }
 
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         INSERT INTO webhook_events (id, customer_id, payload, status, created_at)
         VALUES (:id, :customer_id, :payload, :status, now())
         ON CONFLICT DO NOTHING
-    """), {
-        "id": 1234,
-        "customer_id": customer_name,
-        "payload": json.dumps(payload_dlq),
-        "status": "pending"
-    })
+    """
+        ),
+        {
+            "id": 1234,
+            "customer_id": customer_name,
+            "payload": json.dumps(payload_dlq),
+            "status": "pending",
+        },
+    )
 
     conn.commit()
 

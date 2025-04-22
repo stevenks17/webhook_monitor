@@ -2,9 +2,10 @@ import sys
 import os
 import hmac, hashlib
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.utils import verify_hmac
+
 
 def test_verify_hmac():
     secret = "testsecret"
@@ -13,10 +14,12 @@ def test_verify_hmac():
     assert verify_hmac(secret, body, signature) is True
     assert verify_hmac(secret, body, "invalidsignature") is False
 
+
 def test_verify_hmac_empty_secret():
     body = b'{"foo": "bar"}'
     signature = "abc"
     assert not verify_hmac("", body, signature)
+
 
 def test_verify_hmac_empty_body():
     secret = "testsecret"

@@ -6,21 +6,26 @@ from app.kafka.dlq import publish_to_dlq
 import datetime
 import json, os, logging, time
 
-webhooks_processing_latency = Histogram("webhook_processing_latency_seconds", "Webhook end-to-end processing time")
+webhooks_processing_latency = Histogram(
+    "webhook_processing_latency_seconds", "Webhook end-to-end processing time"
+)
 logger = logging.getLogger(__name__)
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "pyamqp://guest@rabbitmq//")
-start_http_server(8005)
+if os.getpid() == os.getppid():
+    from prometheus_client import start_http_server
+
+    start_http_server(8005)
 
 app = Celery(
-    "worker",
-    broker=CELERY_BROKER_URL,
-    broker_connection_retry_on_startup=True
+    "worker", broker=CELERY_BROKER_URL, broker_connection_retry_on_startup=True
 )
 
 app.conf.task_queues = [
-    Queue(f"webhook_q_{i}",
-          Exchange("webhook_exchange"),
-          routing_key=f"webhook.{i}",)
+    Queue(
+        f"webhook_q_{i}",
+        Exchange("webhook_exchange"),
+        routing_key=f"webhook.{i}",
+    )
     for i in range(4)
 ]
 app.conf.task_default_queue = "webhook_q_0"
@@ -41,6 +46,7 @@ class BasicTaskWithRetry(Task):
 webhooks_processed = Counter("webhooks_processed_total", "Total webhooks processed")
 webhooks_failed = Counter("webhooks_failed_total", "Total webhooks failed")
 
+
 @app.task(bind=True, base=BasicTaskWithRetry)
 def process_webhook(self, message):
     start = time.monotonic()
@@ -51,15 +57,22 @@ def process_webhook(self, message):
             customer_id = message.get("customer_id")
             payload = message.get("payload")
 
-            event = db.query(WebhookEvent).filter(
-                WebhookEvent.id == event_id, 
-                WebhookEvent.customer_id == customer_id
-            ).first()
+            event = (
+                db.query(WebhookEvent)
+                .filter(
+                    WebhookEvent.id == event_id, WebhookEvent.customer_id == customer_id
+                )
+                .first()
+            )
 
             if not event:
-                logger.warning(f"DLQ Candidate: No event found for ID={event_id}, customer={customer_id}")
+                logger.warning(
+                    f"DLQ Candidate: No event found for ID={event_id}, customer={customer_id}"
+                )
                 raise ValueError(f"Event {event_id} not found in database!")
-            logger.info(f"Processing webhook for customer {customer_id}:{json.dumps(payload)}")
+            logger.info(
+                f"Processing webhook for customer {customer_id}:{json.dumps(payload)}"
+            )
             event.status = "processed"
             event.processed_at = datetime.datetime.utcnow()
             webhooks_processed.inc()
@@ -70,14 +83,20 @@ def process_webhook(self, message):
         webhooks_failed.inc()
         logger.exception(f"❌ Failed to process webhook (attempt {retry_count}): {e}")
 
-        publish_to_dlq(reason=f"{str(e)} after {retry_count} retries", event_data=message)     
+        publish_to_dlq(
+            reason=f"{str(e)} after {retry_count} retries", event_data=message
+        )
 
         if event:
             with SessionLocal() as db:
-                event_in_db = db.query(WebhookEvent).filter(
-                    WebhookEvent.id == event.id,
-                    WebhookEvent.customer_id == event.customer_id
-                ).first()
+                event_in_db = (
+                    db.query(WebhookEvent)
+                    .filter(
+                        WebhookEvent.id == event.id,
+                        WebhookEvent.customer_id == event.customer_id,
+                    )
+                    .first()
+                )
                 if event_in_db:
                     event_in_db.status = "retrying"
                     db.commit()
@@ -89,4 +108,3 @@ def process_webhook(self, message):
 
 def shard_for_customer(customer_id: str, num_shards: int = 4) -> int:
     return hash(customer_id) % num_shards
-

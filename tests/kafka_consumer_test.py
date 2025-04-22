@@ -6,12 +6,14 @@ import os
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 
 
-consumer = Consumer ({
-    'bootstrap.servers': KAFKA_BROKER,
-    'group.id': 'webhook-debug',
-    'auto.offset.reset': 'earliest'
-})
-consumer.subscribe(['webhook_events'])
+consumer = Consumer(
+    {
+        "bootstrap.servers": KAFKA_BROKER,
+        "group.id": "webhook-debug",
+        "auto.offset.reset": "earliest",
+    }
+)
+consumer.subscribe(["webhook_events"])
 
 print("👀 Listening to 'webhook_events'...")
 print("Using Kafka broker:", KAFKA_BROKER)
@@ -26,7 +28,7 @@ while True:
         continue
 
     try:
-        payload = json.loads(msg.value().decode('utf-8'))
+        payload = json.loads(msg.value().decode("utf-8"))
         pretty = json.dumps(payload, indent=2)
         print(f"{Fore.GREEN} Received:\n{Fore.CYAN}{pretty}\n{Style.RESET_ALL}")
     except Exception as e:
