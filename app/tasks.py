@@ -1,14 +1,15 @@
 from celery import Celery, Task
+from prometheus_client import Counter, Histogram, start_http_server
 from kombu import Exchange, Queue
 from app.utils import SessionLocal, WebhookEvent
 from app.kafka.dlq import publish_to_dlq
 import datetime
-import json
-import os
-import logging
+import json, os, logging, time
 
+webhooks_processing_latency = Histogram("webhook_processing_latency_seconds", "Webhook end-to-end processing time")
 logger = logging.getLogger(__name__)
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "pyamqp://guest@rabbitmq//")
+start_http_server(8005)
 
 app = Celery(
     "worker",
@@ -37,8 +38,12 @@ class BasicTaskWithRetry(Task):
     retry_jitter = True
 
 
+webhooks_processed = Counter("webhooks_processed_total", "Total webhooks processed")
+webhooks_failed = Counter("webhooks_failed_total", "Total webhooks failed")
+
 @app.task(bind=True, base=BasicTaskWithRetry)
 def process_webhook(self, message):
+    start = time.monotonic()
     event = None
     try:
         with SessionLocal() as db:
@@ -57,10 +62,12 @@ def process_webhook(self, message):
             logger.info(f"Processing webhook for customer {customer_id}:{json.dumps(payload)}")
             event.status = "processed"
             event.processed_at = datetime.datetime.utcnow()
+            webhooks_processed.inc()
             db.commit()
     except Exception as e:
         db.rollback()
         retry_count = self.request.retries
+        webhooks_failed.inc()
         logger.exception(f"❌ Failed to process webhook (attempt {retry_count}): {e}")
 
         publish_to_dlq(reason=f"{str(e)} after {retry_count} retries", event_data=message)     
@@ -76,6 +83,8 @@ def process_webhook(self, message):
                     db.commit()
 
         raise self.retry(exc=e)
+    finally:
+        webhooks_processing_latency.observe(time.monotonic() - start)
 
 
 def shard_for_customer(customer_id: str, num_shards: int = 4) -> int:

@@ -1,11 +1,11 @@
 from app.utils import SessionLocal, WebhookEvent, WebHookPayload, verify_hmac
 from fastapi import FastAPI, Request, Depends, Query, Header, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
+from prometheus_client import Counter
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.kafka.producer import publish_to_kafka
 from app.producer import publish_message
 from sqlalchemy import text
-import secrets
 import os
 
 ENV = os.getenv("ENV", "development")
@@ -43,6 +43,7 @@ def create_customer(name: str, db=Depends(get_db)):
         "message": "Customer created"
     }
 
+webhooks_received = Counter("webhooks_received", "Total number of webhooks received")
 
 @app.post("/webhook")
 async def webhook_listener(
@@ -55,6 +56,7 @@ async def webhook_listener(
     db=Depends(get_db)
 
 ):
+  webhooks_received.inc()
   raw_body = await request.body()
   result = db.execute(text(
      "SELECT webhook_secret FROM customers WHERE name = :name"
