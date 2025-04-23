@@ -6,14 +6,15 @@ import json
 import logging
 
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("kafka_producer")
 
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 
-producer = Producer({
-  "bootstrap.servers": KAFKA_BROKER
-})
+producer = Producer({"bootstrap.servers": KAFKA_BROKER})
+
 
 def publish_to_kafka(topic, message, retries=5):
     for attempt in range(retries):
