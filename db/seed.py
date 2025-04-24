@@ -1,33 +1,36 @@
 from sqlalchemy import create_engine, text
-from datetime import datetime
-import json
-import os
+import os, uuid, json
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+DLQ_EVENT_ID = "11111111-2222-3333-4444-555555555555"
+
 
 engine = create_engine(DATABASE_URL)
 
-customer_name = "acme"
-webhook_secret = "326487fb39a7bdfa85836046c9df5c42b8eafb192af16621df080f1b6f940b20"
+webhook_secret = os.getenv("WEBHOOK_SECRET", "webhook_secret")
+
 
 with engine.connect() as conn:
     # clear old data
     conn.execute(text("DELETE FROM webhook_events"))
+    conn.execute(text("DELETE FROM webhook_audit"))
     conn.execute(text("DELETE FROM delivery_ids"))
     conn.execute(text("DELETE FROM customers"))
     conn.commit()
 
     # insert known customer
-    conn.execute(
-        text(
-            """
-        INSERT INTO customers (name, webhook_secret, created_at)
-        VALUES (:name, :secret, now())
-        ON CONFLICT (name) DO NOTHING
-    """
-        ),
-        {"name": customer_name, "secret": webhook_secret},
-    )
+    for i in range(4):
+        customer_name = f"acme_{i}"
+        conn.execute(
+            text(
+                """
+            INSERT INTO customers (name, webhook_secret, created_at)
+            VALUES (:name, :secret, now())
+            ON CONFLICT (name) DO NOTHING
+        """
+            ),
+            {"name": customer_name, "secret": webhook_secret},
+        )
 
     # insert good webhook for valid test
     payload_valid = {
@@ -40,43 +43,42 @@ with engine.connect() as conn:
     conn.execute(
         text(
             """
-        INSERT INTO webhook_events (customer_id, payload, status, created_at)
-        VALUES (:customer_id, :payload, :status, now())
+        INSERT INTO webhook_events (event_id, customer_id, payload, status, created_at)
+        VALUES (:event_id, :customer_id, :payload, :status, now())
         ON CONFLICT DO NOTHING
     """
         ),
         {
-            "id": 1001,
+            "event_id": str(uuid.uuid4()),
             "customer_id": customer_name,
             "payload": json.dumps(payload_valid),
             "status": "pending",
         },
     )
 
-    # insert DLQ trigger webhook
     payload_dlq = {
-        "order_id": 123,
+        "event_id": DLQ_EVENT_ID,
+        "order_id": 999,
         "status": "created",
         "customer_name": "TRIGGER_DLQ",
-        "amount": 49.99,
+        "amount": 1.23,
     }
 
     conn.execute(
         text(
             """
-        INSERT INTO webhook_events (id, customer_id, payload, status, created_at)
-        VALUES (:id, :customer_id, :payload, :status, now())
+        INSERT INTO webhook_events (event_id, customer_id, payload, status, created_at)
+        VALUES (:event_id, :customer_id, :payload, :status, now())
         ON CONFLICT DO NOTHING
     """
         ),
         {
-            "id": 1234,
+            "event_id": DLQ_EVENT_ID,
             "customer_id": customer_name,
             "payload": json.dumps(payload_dlq),
             "status": "pending",
         },
     )
-
     conn.commit()
 
 print("✅ Seeded customer + valid + DLQ webhook events.")

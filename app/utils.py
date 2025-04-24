@@ -1,18 +1,19 @@
 from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.dialects.postgresql import UUID
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from dotenv import load_dotenv
 import hmac, hashlib
 import datetime
-import os
+import os, uuid
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(
     DATABASE_URL,
-    pool_recycle=1800,
+    pool_recycle=300,
     pool_timeout=10,
     pool_pre_ping=True,
     pool_size=20,
@@ -25,8 +26,7 @@ Base = declarative_base()
 
 class WebhookEvent(Base):
     __tablename__ = "webhook_events"
-
-    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_id = Column(String, nullable=False, default="default")
     payload = Column(JSON, nullable=False)
     status = Column(String, default="pending")
@@ -43,6 +43,12 @@ class WebHookPayload(BaseModel):
         None, min_length=3, max_length=15, description="The name of the customer"
     )
     amount: Optional[float] = Field(None, description="The amount of the order")
+    nonce: str = Field(
+        ...,
+        min_length=8,
+        max_length=22,
+        description="Unique nonce for replay protection",
+    )
 
 
 def verify_hmac(secret: str, body: bytes, signature: str) -> bool:

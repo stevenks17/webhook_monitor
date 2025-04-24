@@ -91,6 +91,8 @@ services:
 
   worker:
     build: .
+    ports:
+      - "8005:8005"
     command: >
       celery -A "app.tasks:app" worker
       --loglevel=info
@@ -124,6 +126,9 @@ services:
       - backend
       - kafka
       - rabbitmq
+      - worker
+      - prometheus
+      - celery_exporter
     env_file:
       - .env
 volumes:

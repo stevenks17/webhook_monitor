@@ -7,6 +7,7 @@ import hashlib
 import uuid
 import statistics
 import random
+import secrets
 
 URL = "http://backend:8000/webhook"
 SECRET = "326487fb39a7bdfa85836046c9df5c42b8eafb192af16621df080f1b6f940b20"
@@ -25,6 +26,7 @@ def make_payload(i):
         "status": "created",
         "customer_name": f"User-{i}",
         "amount": round(10 + i * 0.5, 2),
+        "nonce": secrets.token_urlsafe(16),
     }
 
 

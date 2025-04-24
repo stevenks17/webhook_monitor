@@ -1,4 +1,6 @@
 from app.tasks import process_webhook
+import secrets
+
 
 process_webhook.delay(
     {
@@ -9,6 +11,7 @@ process_webhook.delay(
             "status": "created",
             "customer_name": "FAIL",
             "amount": 0,
+            "nonce": secrets.token_urlsafe(16),
         },
     }
 )
