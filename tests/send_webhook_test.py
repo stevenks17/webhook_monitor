@@ -24,11 +24,9 @@ signature = hmac.new(
     key=webhook_secret.encode(), msg=raw_body, digestmod=hashlib.sha256
 ).hexdigest()
 
-delivery_id = f"test-{uuid.uuid4()}"
 
 headers = {
     "Content-Type": "application/json",
-    "X-Delivery-Id": delivery_id,
     "X-Signature": signature,
 }
 

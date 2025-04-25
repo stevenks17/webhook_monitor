@@ -14,8 +14,9 @@ with engine.connect() as conn:
     # clear old data
     conn.execute(text("DELETE FROM webhook_events"))
     conn.execute(text("DELETE FROM webhook_audit"))
-    conn.execute(text("DELETE FROM delivery_ids"))
     conn.execute(text("DELETE FROM customers"))
+    conn.execute(text("DELETE FROM webhook_nonces"))
+
     conn.commit()
 
     # insert known customer
@@ -74,7 +75,7 @@ with engine.connect() as conn:
         ),
         {
             "event_id": DLQ_EVENT_ID,
-            "customer_id": customer_name,
+            "customer_id": "acme_0",
             "payload": json.dumps(payload_dlq),
             "status": "pending",
         },

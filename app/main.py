@@ -15,6 +15,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from app.kafka.producer import publish_to_kafka
 from app.producer import publish_message
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from secrets import token_hex
 import os, uuid
 
 ENV = os.getenv("ENV", "development")
@@ -45,7 +47,25 @@ def read_root():
     return {"message": "Webhook Monitor is alive!"}
 
 
-from secrets import token_hex
+def record_audit(event_id: str, customer_id: str, raw_body: str, x_signature: str):
+    with SessionLocal() as db:
+        db.execute(
+            text(
+                """
+                INSERT INTO webhook_audit
+                    (event_id, customer_id, raw_body, x_signature)
+                VALUES
+                    (:event_id, :customer_id, CAST(:raw_body AS JSONB), :x_signature)
+            """
+            ),
+            {
+                "event_id": event_id,
+                "customer_id": customer_id,
+                "raw_body": raw_body,
+                "x_signature": x_signature,
+            },
+        )
+        db.commit()
 
 
 @app.post("/customers")
@@ -76,7 +96,6 @@ async def webhook_listener(
     background_tasks: BackgroundTasks,
     payload: WebHookPayload,
     customer_id: str = Query(...),
-    x_delivery_id: str = Header(..., alias="X-Delivery-Id"),
     x_signature: str = Header(..., alias="X-Signature"),
     db=Depends(get_db),
 ):
@@ -84,6 +103,21 @@ async def webhook_listener(
     raw_body = await request.body()
     event_id = str(uuid.uuid4())
     nonce = payload.nonce
+
+    try:
+        db.execute(
+            text(
+                """
+              INSERT INTO webhook_nonces (customer_id, nonce)
+              VALUES (:cid, :nonce)
+            """
+            ),
+            {"cid": customer_id, "nonce": payload.nonce},
+        )
+        db.commit()
+    except IntegrityError:
+        webhook_duplicate.inc()
+        raise HTTPException(409, "Duplicate/replayed nonce")
 
     result = db.execute(
         text("SELECT webhook_secret FROM customers WHERE name = :name"),
@@ -113,19 +147,6 @@ async def webhook_listener(
 
     webhook_secret = result[0]
 
-    exists = db.execute(
-        text(
-            """
-        SELECT 1 FROM webhook_events
-        WHERE customer_id = :cid AND payload->>'nonce' = :nonce
-    """
-        ),
-        {"cid": customer_id, "nonce": nonce},
-    ).fetchone()
-    if exists:
-        webhook_duplicate.inc()
-        raise HTTPException(409, "Duplicate/replayed nonce")
-
     if not verify_hmac(webhook_secret, raw_body, x_signature):
         webhook_hmac_fail.inc()
         increment_hmac_fail.delay(customer_id)
@@ -134,32 +155,21 @@ async def webhook_listener(
     event_data = {
         "event_id": event_id,
         "customer_id": customer_id,
-        "delivery_id": x_delivery_id,
         "payload": payload.model_dump(),
         "raw_body": raw_body.decode(),
         "x_signature": x_signature,
     }
 
-    db.execute(
-        text(
-            """
-            INSERT INTO webhook_audit
-                (event_id, customer_id, raw_body, x_signature)
-            VALUES
-                (:event_id, :customer_id, CAST(:raw_body AS JSONB), :x_signature)
-            """
-        ),
-        {
-            "event_id": event_id,
-            "customer_id": customer_id,
-            "raw_body": raw_body.decode(),
-            "x_signature": x_signature,
-        },
-    )
-    db.commit()
-
     process_webhook.delay(event_data)
     update_last_accessed.delay(customer_id)
+
+    background_tasks.add_task(
+        record_audit,
+        event_data["event_id"],
+        customer_id,
+        event_data["raw_body"],
+        x_signature,
+    )
 
     background_tasks.add_task(
         publish_to_kafka,

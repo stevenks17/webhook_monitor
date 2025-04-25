@@ -1,20 +1,54 @@
+import os
+import time
+import datetime
+import json
+import logging
+
 from celery import Celery, Task
 from sqlalchemy import text
-from prometheus_client import Counter, Histogram, start_http_server
 from kombu import Exchange, Queue
 from app.utils import SessionLocal, WebhookEvent
 from app.kafka.dlq import publish_to_dlq
-import datetime
-import json, os, logging, time
 
-start_http_server(8005)
-webhooks_processing_latency = Histogram(
-    "webhook_processing_latency_seconds", "Webhook end-to-end processing time"
+from prometheus_client import (
+    CollectorRegistry,
+    multiprocess,
+    Counter,
+    Histogram,
+    start_http_server,
 )
+
 logger = logging.getLogger(__name__)
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "pyamqp://guest@rabbitmq//")
 
+# ─── Prometheus multiprocess setup ─────────────────────────────────────────────
+if "PROMETHEUS_MULTIPROC_DIR" in os.environ:
+    registry = CollectorRegistry()
+    multiprocess.MultiProcessCollector(registry)
 
+    webhooks_processing_latency = Histogram(
+        "webhook_processing_latency_seconds",
+        "Webhook end-to-end processing time",
+        registry=registry,
+    )
+    webhooks_processed = Counter(
+        "webhooks_processed_total", "Total webhooks processed", registry=registry
+    )
+    webhooks_failed = Counter(
+        "webhooks_failed_total", "Total webhooks failed", registry=registry
+    )
+else:
+    registry = None
+    webhooks_processing_latency = Histogram(
+        "webhook_processing_latency_seconds", "Webhook end-to-end processing time"
+    )
+    webhooks_processed = Counter("webhooks_processed_total", "Total webhooks processed")
+    webhooks_failed = Counter("webhooks_failed_total", "Total webhooks failed")
+
+if os.getenv("RUN_PROM_METRICS", "false").lower() == "true":
+    start_http_server(8005, registry=registry)
+
+# ─── Celery app setup ──────────────────────────────────────────────────────────
 app = Celery(
     "worker", broker=CELERY_BROKER_URL, broker_connection_retry_on_startup=True
 )
@@ -33,9 +67,6 @@ app.conf.task_default_routing_key = "webhook.0"
 
 app.conf.worker_send_task_events = True
 app.conf.task_send_sent_event = True
-
-webhooks_processed = Counter("webhooks_processed_total", "Total webhooks processed")
-webhooks_failed = Counter("webhooks_failed_total", "Total webhooks failed")
 
 
 class BasicTaskWithRetry(Task):

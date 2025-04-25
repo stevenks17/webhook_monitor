@@ -129,7 +129,6 @@ if __name__ == "__main__":
         total_seen += len(events)
         total_processed += sum(1 for e in events if e["status"] == "processed")
 
-    print(f"➡️  delivery_ids rows seen:      {total_seen}/{TOTAL_REQUESTS}")
     print(f"➡️  processed events marked:    {total_processed}/{TOTAL_REQUESTS}")
 
     if total_seen != TOTAL_REQUESTS or total_processed != TOTAL_REQUESTS:
