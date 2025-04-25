@@ -25,10 +25,10 @@ with engine.connect() as conn:
         conn.execute(
             text(
                 """
-            INSERT INTO customers (name, webhook_secret, created_at)
-            VALUES (:name, :secret, now())
-            ON CONFLICT (name) DO NOTHING
-        """
+                INSERT INTO customers (name, webhook_secret, created_at)
+                VALUES (:name, :secret, now())
+                ON CONFLICT (name) DO NOTHING
+            """
             ),
             {"name": customer_name, "secret": webhook_secret},
         )
