@@ -1,14 +1,13 @@
 import os
 import time
-import datetime
 import json
 
 from celery import Celery, Task
 from celery.utils.log import get_task_logger
 from sqlalchemy import text
 from kombu import Exchange, Queue
-from app.utils import SessionLocal, WebhookEvent
-from app.kafka.dlq import publish_to_dlq
+from app.utils import SessionLocal
+
 
 from prometheus_client import (
     CollectorRegistry,
@@ -107,6 +106,15 @@ def process_webhook(self, message):
             )
             db.commit()
 
+            db.execute(
+                text(
+                    "INSERT INTO webhook_audit(event_id,customer_id,raw_body,x_signature)"
+                    "VALUES(:event_id,:customer_id,CAST(:raw_body AS JSONB),:x_signature)"
+                ),
+                message,
+            )
+            db.commit()
+            update_last_accessed.delay(message["customer_id"])
             logger.info(f"Processing webhook {event_id} for {customer_id}")
             webhooks_processed.inc()
 
@@ -114,6 +122,7 @@ def process_webhook(self, message):
         webhooks_failed.inc()
         retry_count = self.request.retries
         logger.exception(f"❌ Failed to process webhook (attempt {retry_count}): {e}")
+        from app.kafka.dlq import publish_to_dlq
 
         publish_to_dlq(
             reason=f"{str(e)} after {retry_count} retries", event_data=message

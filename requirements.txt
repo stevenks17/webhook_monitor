@@ -1,14 +1,24 @@
-fastapi==0.110.0
-uvicorn==0.29.0
+# core framework
+fastapi>=0.115.12,<0.116
+uvicorn>=0.34.0,<1.0
+starlette>=0.41.3,<1.0
+
+# http client
+httpx>=0.28.1,<1.0
+
+# ASGI instrumentation
+prometheus-fastapi-instrumentator==7.1.0
+
+# messaging & db
 celery==5.3.6
+confluent-kafka==2.3.0
 psycopg2-binary==2.9.9
 SQLAlchemy==2.0.29
+
+# utils & testing
 python-dotenv==1.0.1
 aiohttp==3.9.3
-confluent-kafka==2.3.0
 colorama==0.4.6
 requests==2.31.0
-pytest==7.4.0
-httpx==0.25.0
 cachetools>=5.0
-prometheus-fastapi-instrumentator==7.1.0
+pytest>=7.4.0

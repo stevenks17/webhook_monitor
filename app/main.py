@@ -1,5 +1,5 @@
 from app.utils import SessionLocal, WebhookEvent, WebHookPayload, verify_hmac
-from app.tasks import update_last_accessed, increment_hmac_fail, process_webhook
+from app.tasks import shard_for_customer, process_webhook
 from fastapi import (
     FastAPI,
     Request,
@@ -7,19 +7,16 @@ from fastapi import (
     Query,
     Header,
     HTTPException,
-    BackgroundTasks,
 )
 from fastapi.responses import JSONResponse
 from prometheus_client import Counter
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.kafka.producer import publish_to_kafka
-from app.producer import publish_message
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from secrets import token_hex
 import os, uuid
 
-ENV = os.getenv("ENV", "development")
 
 app = FastAPI()
 Instrumentator().instrument(app).expose(app)
@@ -36,10 +33,8 @@ webhook_duplicate = Counter(
 
 def get_db():
     db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    yield db
+    db.close()
 
 
 @app.get("/")
@@ -93,7 +88,6 @@ def create_customer(name: str, db=Depends(get_db)):
 @app.post("/webhook")
 async def webhook_listener(
     request: Request,
-    background_tasks: BackgroundTasks,
     payload: WebHookPayload,
     customer_id: str = Query(...),
     x_signature: str = Header(..., alias="X-Signature"),
@@ -102,87 +96,65 @@ async def webhook_listener(
     webhooks_received.inc()
     raw_body = await request.body()
     event_id = str(uuid.uuid4())
-    nonce = payload.nonce
 
     try:
         db.execute(
-            text(
-                """
-              INSERT INTO webhook_nonces (customer_id, nonce)
-              VALUES (:cid, :nonce)
-            """
-            ),
+            text("INSERT INTO webhook_nonces(customer_id,nonce) VALUES(:cid,:nonce)"),
             {"cid": customer_id, "nonce": payload.nonce},
         )
         db.commit()
     except IntegrityError:
         webhook_duplicate.inc()
-        raise HTTPException(409, "Duplicate/replayed nonce")
+        raise HTTPException(409, "Duplicate nonce")
 
-    result = db.execute(
-        text("SELECT webhook_secret FROM customers WHERE name = :name"),
-        {"name": customer_id},
+    row = db.execute(
+        text("SELECT webhook_secret FROM customers WHERE name=:n"),
+        {"n": customer_id},
     ).fetchone()
+    if not row and os.getenv("ENV", "dev") != "production":
+        db.execute(
+            text(
+                """
+                INSERT INTO customers(name,webhook_secret)
+                VALUES(:n,:s) ON CONFLICT DO NOTHING
+            """
+            ),
+            {"n": customer_id, "s": os.getenv("WEBHOOK_SECRET", "secret")},
+        )
+        db.commit()
+        row = db.execute(
+            text("SELECT webhook_secret FROM customers WHERE name=:n"),
+            {"n": customer_id},
+        ).fetchone()
+    if not row:
+        raise HTTPException(403, "Unknown customer")
 
-    if not result:
-        if ENV != "production":
-            generated_secret = os.getenv("WEBHOOK_SECRET", "webhook_secret")
-            db.execute(
-                text(
-                    """
-                    INSERT INTO customers(name, webhook_secret)
-                    VALUES(:name, :secret)
-                    ON CONFLICT DO NOTHING
-                    """
-                ),
-                {"name": customer_id, "secret": generated_secret},
-            )
-            db.commit()
-            result = db.execute(
-                text("SELECT webhook_secret FROM customers WHERE name = :name"),
-                {"name": customer_id},
-            ).fetchone()
-        else:
-            raise HTTPException(403, "Missing webhook_secret")
-
-    webhook_secret = result[0]
-
-    if not verify_hmac(webhook_secret, raw_body, x_signature):
+    secret = row[0]
+    if not verify_hmac(secret, raw_body, x_signature):
         webhook_hmac_fail.inc()
-        increment_hmac_fail.delay(customer_id)
+        bad_msg = {
+            "event_id": event_id,
+            "customer_id": customer_id,
+            "payload": payload.model_dump(),
+            "raw_body": raw_body.decode(),
+            "x_signature": x_signature,
+            "hmac_failed": True,
+        }
+        process_webhook.apply_async(
+            args=(bad_msg,),
+            queue=f"webhook_q_{shard_for_customer(customer_id)}",
+        )
         raise HTTPException(403, "Invalid signature")
 
-    event_data = {
+    message = {
         "event_id": event_id,
         "customer_id": customer_id,
         "payload": payload.model_dump(),
         "raw_body": raw_body.decode(),
         "x_signature": x_signature,
     }
-
-    process_webhook.delay(event_data)
-    update_last_accessed.delay(customer_id)
-
-    background_tasks.add_task(
-        record_audit,
-        event_data["event_id"],
-        customer_id,
-        event_data["raw_body"],
-        x_signature,
-    )
-
-    background_tasks.add_task(
-        publish_to_kafka,
-        "webhook_events",
-        event_data,
-    )
-
-    background_tasks.add_task(
-        publish_message,
-        event_data,
-    )
-
-    return JSONResponse({"status": "queued", "event_id": event_id})
+    publish_to_kafka("webhook_events", message)
+    return {"status": "queued", "event_id": event_id}
 
 
 @app.get("/webhooks")

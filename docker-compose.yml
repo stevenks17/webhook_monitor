@@ -67,7 +67,7 @@ services:
       - "3000:3000"
     volumes:
       - grafana-storage:/var/lib/grafana
-      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/provisioning/dashboard:/etc/grafana/provisioning/dashboard
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
 
   backend:
@@ -85,10 +85,10 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
-      interval: 5s
-      timeout: 3s
-      retries: 3
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/');"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   worker:
     build: .
@@ -105,6 +105,11 @@ services:
           -Q webhook_q_0,webhook_q_1,webhook_q_2,webhook_q_3 \
           --concurrency=8
       "
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:8005/metrics || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     volumes:
       - .:/code
     depends_on:
@@ -127,15 +132,39 @@ services:
       - .env
     restart: on-failure
 
+  webhook_consumer:
+    build: .
+    working_dir: /code/app/kafka
+    command: python consumer.py
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    depends_on:
+      kafka:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: always
+
   test_runner:
     build: .
+    volumes:
+      - .:/code
+    working_dir: /code
+    entrypoint: ["pytest"]
+    command: ["--maxfail=1","-s"]
     depends_on:
-      - backend
-      - kafka
-      - rabbitmq
-      - worker
-      - prometheus
-      - celery_exporter
+      rabbitmq:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      webhook_consumer:
+        condition: service_started
+      worker:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
     env_file:
       - .env
 volumes:
