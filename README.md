@@ -10,18 +10,44 @@ A FastAPI + Celery + Kafka application for receiving, processing, and monitoring
 - SQLAlchemy/Postgres for persistence and audit logging
 - Prometheus/Grafana monitoring for performance and health metrics
 
+## Prerequisites
+
+- Docker & docker‑compose  
+- (Optional, for local dev) Python 3.10+ and `pip`
+
+## Environment
+
+1. Copy the example:
+   ```sh
+   cp .env.example .env
+   ```
+2. Populate `.env` with:
+   ```properties
+   DATABASE_URL=postgresql://...
+   KAFKA_BROKER=kafka:9092
+   CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+   RUN_PROM_METRICS=true|false
+   ENV=development|production
+   WEBHOOK_SECRET=<your_webhook_secret>
+   ```
+   
 ## Setup
 
-1. Clone the repo
-2. Copy `.env.example` to `.env` and fill in your secrets and DB/Kafka config
-3. Start services:
-   ```sh
-   docker-compose up --build
-   ```
-4. Run tests:
-   ```sh
-   python tests/send_webhook_test.py
-   ```
+### Database seeding
+```sh
+python db/seed.py
+```
+
+### Running with Docker
+```sh
+docker-compose up --build
+```
+
+### (Optional) Running Locally
+```sh
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
 ## Usage
 
@@ -73,7 +99,7 @@ Ensure your `.env` file (or environment configuration) contains:
 - The tests include scenarios for successful webhook processing and task failure handling (DLQ behavior).  
 - To run tests:
   ```sh
-  pytest
+  docker compose run --rm test_runner -s
   ```
 - Example test files include:  
   - `tests/send_webhook_test.py`
