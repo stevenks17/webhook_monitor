@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime
+from sqlalchemy import create_engine, Column, String, JSON, DateTime
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.dialects.postgresql import UUID
 from pydantic import BaseModel, Field

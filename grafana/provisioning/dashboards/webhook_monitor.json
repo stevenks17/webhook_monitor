@@ -444,6 +444,7 @@
             "uid": "dej7wsbhewao0a"
           },
           "expr": "increase(webhooks_processed_total[1m])",
+          "legendFormat": "{{instance}}",
           "refId": "A"
         }
       ],

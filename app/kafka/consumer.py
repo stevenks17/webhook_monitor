@@ -4,7 +4,7 @@ from app.tasks import process_webhook, shard_for_customer
 
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 
-print("🚀 Kafka consumer starting…", flush=True)
+print("Kafka consumer starting…", flush=True)
 
 
 conf = {
@@ -31,7 +31,7 @@ try:
             args=[data], queue=f"webhook_q_{shard_for_customer(data['customer_id'])}"
         )
         print(
-            f"📥 Received event {data['event_id']} for {data['customer_id']} → queued on webhook_q_{shard}"
+            f"Received event {data['event_id']} for {data['customer_id']} → queued on webhook_q_{shard}"
         )
 
 finally:
